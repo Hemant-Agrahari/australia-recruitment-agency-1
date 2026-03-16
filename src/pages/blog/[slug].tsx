@@ -1,9 +1,9 @@
-import React, { memo, useMemo, useEffect, useState, useRef } from "react";
+import React, { useMemo, useEffect, useState, useRef } from "react";
 import Link from "next/link";
+import { GetServerSideProps } from "next";
 import { MdOutlineRemoveRedEye } from "react-icons/md";
 import { formatDate } from "@/utils/dateFormat";
 import ErrorLoading from "../404";
-import Loading from "@/components/Loading";
 import CustomHead from "@/components/Head";
 import { generateDynamicMeta } from "@/meta/DynamicMeta";
 import Image from "next/image";
@@ -33,76 +33,14 @@ interface BlogPageProps {
   post: PostData;
 }
 
-const HeadHunterExecutiveJobSearch: React.FC = () => {
+const HeadHunterExecutiveJobSearch: React.FC<BlogPageProps> = ({ post }) => {
   const router = useRouter();
-  const { slug: urlSlug } = router.query;
 
   const formRef = useRef<HTMLElement>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFormVisible, setIsFormVisible] = useState(false);
   const [isLatestUpdatesVisible, setIsLatestUpdatesVisible] = useState(false);
   const [isBlogFormVisible, setIsBlogFormVisible] = useState(false);
-
-  const [post, setPost] = useState<PostData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchBlogData = async () => {
-      if (!urlSlug) return;
-
-      setLoading(true);
-      setError(null);
-
-      try {
-        const apiUrl = `${process.env.NEXT_PUBLIC_BACKEND_URL}/blogDetailsFrontend?slug=${urlSlug}`;
-        console.log("Client-side fetching Blog API:", apiUrl);
-
-        const response = await fetch(apiUrl, {
-          headers: {
-            "Content-Type": "application/json",
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`API failed with status ${response.status}`);
-        }
-
-        const postResponse = await response.json();
-        console.log("Client-side API response:", postResponse);
-
-        if (!postResponse || postResponse.status !== 200 || !postResponse.data) {
-          throw new Error("Blog not found or invalid response structure");
-        }
-
-        const blogData = Array.isArray(postResponse.data)
-          ? postResponse.data[0]
-          : postResponse.data;
-
-        const reshapedData: PostData = {
-          status: 200,
-          data: {
-            blogData: blogData,
-            author: blogData.author || null,
-            relatedBlog: [],
-            prevBlog: null,
-            nextBlog: null,
-          },
-        };
-
-        setPost(reshapedData);
-      } catch (err: any) {
-        console.error("Fetch error:", err.message);
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (router.isReady && urlSlug) {
-      fetchBlogData();
-    }
-  }, [urlSlug, router.isReady]);
 
   const { author, blogData } = post?.data || {};
 
@@ -151,11 +89,7 @@ const HeadHunterExecutiveJobSearch: React.FC = () => {
     };
   }, []);
 
-  if (loading) {
-    return <Loading />;
-  }
-
-  if (error || !post || post.status !== 200 || !post.data || !post.data.blogData) {
+  if (!post || post.status !== 200 || !post.data || !post.data.blogData) {
     return <ErrorLoading />;
   }
 
@@ -925,5 +859,54 @@ const HeadHunterExecutiveJobSearch: React.FC = () => {
   ) : null;
 };
 
+export const getServerSideProps: GetServerSideProps = async ({ params }) => {
+  const urlSlug = params?.slug;
+
+  if (!urlSlug) {
+    return { notFound: true };
+  }
+
+  try {
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_BACKEND_URL}/blogDetailsFrontend?slug=${urlSlug}`,
+      {
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+
+    if (!response.ok) {
+      console.error("blogDetailsFrontend API failed:", response.status);
+      return { notFound: true };
+    }
+
+    const postResponse = await response.json();
+
+    if (!postResponse || postResponse.status !== 200 || !postResponse.data) {
+      console.error("Invalid API response:", postResponse);
+      return { notFound: true };
+    }
+
+    // API may return data as an array or object — normalise to a single object
+    const rawBlogData = Array.isArray(postResponse.data)
+      ? postResponse.data[0]
+      : postResponse.data;
+
+    const post: PostData = {
+      status: 200,
+      data: {
+        blogData: rawBlogData,
+        author: rawBlogData?.author || null,
+        relatedBlog: postResponse.data?.relatedBlog || [],
+        prevBlog: postResponse.data?.prevBlog || null,
+        nextBlog: postResponse.data?.nextBlog || null,
+      },
+    };
+
+    return { props: { post } };
+  } catch (error) {
+    console.error("Error in getServerSideProps:", error);
+    return { notFound: true };
+  }
+};
 
 export default HeadHunterExecutiveJobSearch;
