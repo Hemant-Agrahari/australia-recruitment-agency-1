@@ -1,9 +1,9 @@
 import React, { memo, useMemo, useEffect, useState, useRef } from "react";
 import Link from "next/link";
-import { GetStaticProps, GetStaticPaths } from "next";
 import { MdOutlineRemoveRedEye } from "react-icons/md";
 import { formatDate } from "@/utils/dateFormat";
 import ErrorLoading from "../404";
+import Loading from "@/components/Loading";
 import CustomHead from "@/components/Head";
 import { generateDynamicMeta } from "@/meta/DynamicMeta";
 import Image from "next/image";
@@ -33,13 +33,76 @@ interface BlogPageProps {
   post: PostData;
 }
 
-const HeadHunterExecutiveJobSearch: React.FC<BlogPageProps> = ({ post }) => {
+const HeadHunterExecutiveJobSearch: React.FC = () => {
   const router = useRouter();
+  const { slug: urlSlug } = router.query;
+
   const formRef = useRef<HTMLElement>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFormVisible, setIsFormVisible] = useState(false);
   const [isLatestUpdatesVisible, setIsLatestUpdatesVisible] = useState(false);
   const [isBlogFormVisible, setIsBlogFormVisible] = useState(false);
+
+  const [post, setPost] = useState<PostData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchBlogData = async () => {
+      if (!urlSlug) return;
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        const apiUrl = `${process.env.NEXT_PUBLIC_BACKEND_URL}/blogDetailsFrontend?slug=${urlSlug}`;
+        console.log("Client-side fetching Blog API:", apiUrl);
+
+        const response = await fetch(apiUrl, {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`API failed with status ${response.status}`);
+        }
+
+        const postResponse = await response.json();
+        console.log("Client-side API response:", postResponse);
+
+        if (!postResponse || postResponse.status !== 200 || !postResponse.data) {
+          throw new Error("Blog not found or invalid response structure");
+        }
+
+        const blogData = Array.isArray(postResponse.data)
+          ? postResponse.data[0]
+          : postResponse.data;
+
+        const reshapedData: PostData = {
+          status: 200,
+          data: {
+            blogData: blogData,
+            author: blogData.author || null,
+            relatedBlog: [],
+            prevBlog: null,
+            nextBlog: null,
+          },
+        };
+
+        setPost(reshapedData);
+      } catch (err: any) {
+        console.error("Fetch error:", err.message);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (router.isReady && urlSlug) {
+      fetchBlogData();
+    }
+  }, [urlSlug, router.isReady]);
 
   const { author, blogData } = post?.data || {};
 
@@ -88,7 +151,11 @@ const HeadHunterExecutiveJobSearch: React.FC<BlogPageProps> = ({ post }) => {
     };
   }, []);
 
-  if (!post || post.status !== 200 || !post.data || !post.data.blogData) {
+  if (loading) {
+    return <Loading />;
+  }
+
+  if (error || !post || post.status !== 200 || !post.data || !post.data.blogData) {
     return <ErrorLoading />;
   }
 
@@ -858,101 +925,5 @@ const HeadHunterExecutiveJobSearch: React.FC<BlogPageProps> = ({ post }) => {
   ) : null;
 };
 
-export const getStaticPaths: GetStaticPaths = async () => {
-  try {
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_BACKEND_URL}/getBlogList?pageIndex=1&pageSize=10`
-    );
-
-    if (!response.ok) {
-      console.error("getAllBlog API failed:", response.status);
-      return {
-        paths: [],
-        fallback: "blocking",
-      };
-    }
-
-    const data = await response.json();
-
-    if (data && data.status === 200 && Array.isArray(data.data)) {
-      const paths = data.data.map((blog: any) => ({
-        params: { slug: blog.slug },
-      }));
-
-      return {
-        paths,
-        fallback: "blocking",
-      };
-    }
-
-    return {
-      paths: [],
-      fallback: "blocking",
-    };
-  } catch (error) {
-    console.error("Error fetching blog paths:", error);
-
-    return {
-      paths: [],
-      fallback: "blocking",
-    };
-  }
-};
-
-export const getStaticProps: GetStaticProps = async ({ params }) => {
-  const urlSlug = params?.slug;
-
-  if (!urlSlug) {
-    return {
-      notFound: true,
-    };
-  }
-
-  try {
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_BACKEND_URL}/getService?slug=${urlSlug}`,
-      {
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    if (!response.ok) {
-      console.error(
-        "getService API failed:",
-        response.status,
-        response.statusText
-      );
-
-      return {
-        notFound: true,
-      };
-    }
-
-    const post = await response.json();
-
-    if (!post || post.status !== 200 || !post.data) {
-      console.error("Invalid API response:", post);
-
-      return {
-        notFound: true,
-      };
-    }
-
-    return {
-      props: {
-        post,
-      },
-      revalidate: 600, // regenerate every 10 minutes
-    };
-  } catch (error) {
-    console.error("Error fetching blog post:", error);
-
-    return {
-      notFound: true,
-    };
-  }
-};
 
 export default HeadHunterExecutiveJobSearch;
