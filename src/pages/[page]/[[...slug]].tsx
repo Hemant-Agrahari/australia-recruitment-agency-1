@@ -12,7 +12,7 @@ import { generateDynamicMeta } from "@/meta/DynamicMeta";
 import ServiceTemplate5 from "@/components/Template/Service/service-template-5";
 import { useRouter } from "next/router";
 import Head from "next/head";
-import { GetStaticProps, GetStaticPaths } from "next";
+import { GetServerSideProps } from "next";
 
 interface HelloProps {
   result: any;
@@ -21,13 +21,7 @@ interface HelloProps {
 const Hello: React.FC<HelloProps> = ({ result }) => {
   const router = useRouter();
 
-  if (router.isFallback) {
-    return (
-      <div style={{ height: '60vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-        <h1>Loading...</h1>
-      </div>
-    );
-  }
+
 
   if (!result) {
     return (
@@ -290,81 +284,7 @@ const Hello: React.FC<HelloProps> = ({ result }) => {
   );
 };
 
-export const getStaticPaths: GetStaticPaths = async () => {
-    try {
-        const CMS_API_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
-        const SITEMAP_DATA_ENDPOINT = "/getDataForSitemap?collectionName";
-
-        const endpoints = ["ServicePage", "franchisePage", "Marketing", "ServiceFiveForm"];
-        
-        const results = await Promise.all(
-            endpoints.map(endpoint => 
-                fetch(`${CMS_API_URL}${SITEMAP_DATA_ENDPOINT}=${endpoint}`)
-                    .then(res => res.json())
-                    .then(data => data.data || [])
-            )
-        );
-
-        const allSlugs = results.flat();
-        const seenPaths = new Set();
-        const paths: any[] = [];
-
-        // Pages that should be ignored because they are defined as static files
-        const ignoredPages = new Set([
-            '', 'index', '_app', '_document', 'api', 'blog', 'author', 'category', 
-            'thank-you', 'thank-you-franchise', 'thank-you-it-outsource',
-            'contact-us', 'about-us', 'locations', 'services', 'job-seekers', 'job',
-            'franchise-apply', 'franchise-enquiry', 'privacy-policy', 'notice',
-            'employment-agency-franchise-opportunities',
-            'executive-search-franchise-opportunities',
-            'medical-healthcare-staffing-franchise-opportunities',
-            'manpower-consultancy-franchise-opportunities',
-            'staffing-agency-franchise-opportunities',
-            'manpower-supply-company', 'sitemap', 'webblog', '404'
-        ]);
-
-        allSlugs.forEach((item: any) => {
-            if (!item.slug) return;
-            
-            // Normalize slug: remove leading/trailing slashes
-            const normalizedSlug = item.slug.replace(/^\/+|\/+$/g, '');
-            if (!normalizedSlug) return;
-
-            const slugParts = normalizedSlug.split('/');
-            const page = slugParts[0];
-            
-            // Skip if the base page is in ignored list
-            if (ignoredPages.has(page)) return;
-
-            const slug = slugParts.slice(1);
-            
-            // Create a unique key for the path to deduplicate
-            const pathKey = normalizedSlug;
-            if (!seenPaths.has(pathKey)) {
-                seenPaths.add(pathKey);
-                paths.push({
-                    params: {
-                        page: page,
-                        slug: slug.length > 0 ? slug : []
-                    }
-                });
-            }
-        });
-
-        return {
-            paths,
-            fallback: 'blocking',
-        };
-    } catch (error) {
-        console.error("Error in getStaticPaths:", error);
-        return {
-            paths: [],
-            fallback: 'blocking',
-        };
-    }
-};
-
-export const getStaticProps: GetStaticProps = async ({ params }) => {
+export const getServerSideProps: GetServerSideProps = async ({ params }) => {
     try {
         const { page, slug: routerSlug } = params as any;
         
@@ -394,13 +314,12 @@ export const getStaticProps: GetStaticProps = async ({ params }) => {
             props: {
               result: data.data,
             },
-            revalidate: 600, // 10 minutes
           };
         } else {
             return { notFound: true };
         }
     } catch (error) {
-        console.error("Error in getStaticProps:", error);
+        console.error("Error in getServerSideProps:", error);
         return { notFound: true };
     }
 };
